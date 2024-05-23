@@ -1,4 +1,7 @@
-﻿# Функция для вычисления хэша файла
+﻿# Загрузка сборок Windows Forms
+Add-Type -AssemblyName System.Windows.Forms
+
+# Функция для вычисления хэша файла
 function Get-FileHashString {
     param (
         [string]$filePath
@@ -15,7 +18,7 @@ $directory = Read-Host "Введите путь к директории для �
 
 # Проверка существования директории
 if (-Not (Test-Path -Path $directory)) {
-    Write-Host "Указанная директория не существует. Завершение работы скрипта."
+    [System.Windows.Forms.MessageBox]::Show("Указанная директория не существует. Завершение работы скрипта.", "Ошибка", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
     exit
 }
 
@@ -56,53 +59,53 @@ foreach ($fileGroup in $sizeTable.Values) {
     }
 }
 
-# Запись дубликатов в текстовый файл
-$outputPath = Join-Path -Path $directory -ChildPath "duplicates.txt"
-$duplicateFiles.GetEnumerator() | ForEach-Object {
-    $hash = $_.Key
-    $files = $_.Value
-    "${hash}:`n$($files -join "`n")`n" | Out-File -FilePath $outputPath -Append
-}
+# Создание графического интерфейса для выбора дубликатов файлов
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Выбор файлов для удаления"
+$form.Size = New-Object System.Drawing.Size(800, 600)
+$form.StartPosition = "CenterScreen"
 
-# Предложение выбрать и удалить дубликаты
-if ($duplicateFiles.Count -gt 0) {
-    Write-Host "Найдены дубликаты файлов:"
-    $index = 0
-    $fileIndexMap = @{}
-    
-    # Отображение списка дубликатов с индексами
-    $duplicateFiles.GetEnumerator() | ForEach-Object {
-        $hash = $_.Key
-        $files = $_.Value
-        Write-Host "Дубликаты для хэша ${hash}:"
-        $files | ForEach-Object {
-            Write-Host "[$index] $_"
-            $fileIndexMap[$index] = $_
-            $index++
-        }
-    }
-    
-    $response = Read-Host "Введите номера файлов для удаления через запятую (например: 0,2,5), или 'n' для отмены"
-    
-    if ($response -ne 'n') {
-        $indicesToDelete = $response -split ',' | ForEach-Object { $_.Trim() }
-        
-        foreach ($index in $indicesToDelete) {
-            if ($fileIndexMap.ContainsKey([int]$index)) {
-                $filePath = $fileIndexMap[[int]$index]
+$checkedListBox = New-Object System.Windows.Forms.CheckedListBox
+$checkedListBox.Dock = "Fill"
+$form.Controls.Add($checkedListBox)
+
+$okButton = New-Object System.Windows.Forms.Button
+$okButton.Text = "Удалить выбранные"
+$okButton.Dock = "Bottom"
+$okButton.Add_Click({
+    $checkedItems = @($checkedListBox.CheckedItems)
+    if ($checkedItems.Count -gt 0) {
+        $result = [System.Windows.Forms.MessageBox]::Show("Вы уверены, что хотите удалить выбранные файлы?", "Подтверждение", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+            $itemsToRemove = @()
+            foreach ($item in $checkedItems) {
                 try {
-                    Remove-Item -Path $filePath -Force
-                    Write-Host "Удален: $filePath"
+                    Remove-Item -Path $item -Force
+                    $itemsToRemove += $item
+                    Write-Host "Удален: $item"
                 } catch {
-                    Write-Host "Ошибка при удалении ${filePath}: $_"
+                    [System.Windows.Forms.MessageBox]::Show("Ошибка при удалении ${item}: $_", "Ошибка", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
                 }
-            } else {
-                Write-Host "Некорректный индекс: $index"
+            }
+            foreach ($item in $itemsToRemove) {
+                $checkedListBox.Items.Remove($item)
             }
         }
-    } else {
-        Write-Host "Удаление дубликатов отменено."
+    }
+})
+$form.Controls.Add($okButton)
+
+# Заполнение списка дубликатов
+if ($duplicateFiles.Count -gt 0) {
+    foreach ($fileGroup in $duplicateFiles.Values) {
+        foreach ($filePath in $fileGroup) {
+            $checkedListBox.Items.Add($filePath)
+        }
     }
 } else {
-    Write-Host "Дубликаты файлов не найдены."
+    [System.Windows.Forms.MessageBox]::Show("Дубликаты файлов не найдены.", "Информация", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+    exit
 }
+
+# Запуск формы
+[System.Windows.Forms.Application]::Run($form)
